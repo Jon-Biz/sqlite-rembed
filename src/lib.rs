@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use clients::{Client, CohereClient, LlamafileClient, NomicClient, OllamaClient, OpenAiClient};
+use clients::{Client, CohereClient, LlamafileClient, NomicClient, OllamaClient, OpenAiClient, OpenRouterClient};
 use clients_vtab::ClientsTable;
 use sqlite_loadable::{
     api, define_scalar_function, define_scalar_function_with_aux, define_virtual_table_writeablex,
@@ -73,6 +73,13 @@ pub fn rembed_client_options(
             options.get("url").cloned(),
         )),
         "llamafile" => Client::Llamafile(LlamafileClient::new(options.get("url").cloned())),
+        "openrouter" => Client::OpenRouter(OpenRouterClient::new(
+            options
+                .get("model")
+                .ok_or_else(|| Error::new_message("'model' option is required"))?,
+            options.get("url").cloned(),
+            options.get("key").cloned(),
+        )?),
         format => return Err(Error::new_message(format!("Unknown format '{format}'"))),
     };
 
@@ -108,6 +115,7 @@ pub fn rembed(
             let input_type = values.get(2).and_then(|v| api::value_text(v).ok());
             client.infer_single(input, input_type)?
         }
+        Client::OpenRouter(client) => client.infer_single(input)?,
     };
 
     api::result_blob(context, embedding.as_bytes());
