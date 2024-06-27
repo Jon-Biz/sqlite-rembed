@@ -10,7 +10,7 @@ use std::{cell::RefCell, collections::HashMap, marker::PhantomData, mem, os::raw
 use crate::clients::MixedbreadClient;
 use crate::{
     clients::{
-        Client, CohereClient, JinaClient, LlamafileClient, NomicClient, OllamaClient, OpenAiClient,
+        Client, CohereClient, JinaClient, LlamafileClient, NomicClient, OllamaClient, OpenAiClient, OpenRouterClient
     },
     CLIENT_OPTIONS_POINTER_NAME,
 };
@@ -91,6 +91,8 @@ impl<'vtab> VTabWriteable<'vtab> for ClientsTable {
                 let client = match api::value_type(&values[1]) {
                     ValueType::Text => match api::value_text(&values[1])? {
                         "openai" => Client::OpenAI(OpenAiClient::new(name, None, None)?),
+                        "openrouter" => Client::OpenRouterAI(OpenRouterClient::new(name, None, None)?),
+                        
                         "mixedbread" => {
                             Client::Mixedbread(MixedbreadClient::new(name, None, None)?)
                         }
