@@ -505,6 +505,88 @@ impl LlamafileClient {
 }
 
 #[derive(Clone)]
+pub struct OpenRouterClient {
+    model: String,
+    url: String,
+    key: String,
+}
+const DEFAULT_OPENROUTER_URL: &str = "https://openrouter.ai/api/v1";
+const DEFAULT_OPENROUTER_KEY_ENV: &str = "OPENROUTER_API_KEY";
+
+impl OpenRouterClient {
+    pub fn new<S: Into<String>>(
+        model: S,
+        url: Option<String>,
+        key: Option<String>,
+    ) -> Result<Self> {
+        Ok(Self {
+            model: model.into(),
+            url: url.unwrap_or(DEFAULT_OPENROUTER_URL.to_owned()),
+            key: match key {
+                Some(key) => key,
+                None => try_env_var(DEFAULT_OPENROUTER_KEY_ENV)?,
+            },
+        })
+    }
+    pub fn infer_single(&self, input: &str) -> Result<Vec<f32>> {
+        let body = serde_json::json!({
+            "input": input,
+            "model": self.model
+        });
+
+        let data: serde_json::Value = ureq::post(&self.url)
+            .set("Content-Type", "application/json")
+            .set("Authorization", format!("Bearer {}", self.key).as_str())
+            .send_bytes(
+                serde_json::to_vec(&body)
+                    .map_err(|error| {
+                        Error::new_message(format!("Error serializing body to JSON: {error}"))
+                    })?
+                    .as_ref(),
+            )
+            .map_err(|error| Error::new_message(format!("Error sending HTTP request: {error}")))?
+            .into_json()
+            .map_err(|error| {
+                Error::new_message(format!("Error parsing HTTP response as JSON: {error}"))
+            })?;
+        OpenRouterClient::parse_single_response(data)
+    }
+
+    pub fn parse_single_response(value: serde_json::Value) -> Result<Vec<f32>> {
+        value
+            .get("data")
+            .ok_or_else(|| Error::new_message("expected 'data' key in response body"))
+            .and_then(|v| {
+                v.get(0)
+                    .ok_or_else(|| Error::new_message("expected 'data.0' path in response body"))
+            })
+            .and_then(|v| {
+                v.get("embedding").ok_or_else(|| {
+                    Error::new_message("expected 'data.0.embedding' path in response body")
+                })
+            })
+            .and_then(|v| {
+                v.as_array().ok_or_else(|| {
+                    Error::new_message("expected 'data.0.embedding' path to be an array")
+                })
+            })
+            .and_then(|arr| {
+                arr.iter()
+                    .map(|v| {
+                        v.as_f64()
+                            .ok_or_else(|| {
+                                Error::new_message(
+                                    "expected 'data.0.embedding' array to contain floats",
+                                )
+                            })
+                            .map(|f| f as f32)
+                    })
+                    .collect()
+            })
+    }
+}
+
+#[derive(Clone)]
 pub enum Client {
     OpenAI(OpenAiClient),
     Nomic(NomicClient),
@@ -513,4 +595,5 @@ pub enum Client {
     Llamafile(LlamafileClient),
     Jina(JinaClient),
     Mixedbread(MixedbreadClient),
+    OpenRouter(OpenRouterClient),
 }
